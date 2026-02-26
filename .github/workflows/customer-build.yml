@@ -27,14 +27,27 @@ jobs:
       - name: Build
         id: build
         run: |
-          ./packages/opencode/script/build.ts --single
+          bun run ./packages/opencode/script/build.ts --single
         env:
           OPENCODE_VERSION: "1.2.11"
-          OPENCODE_RELEASE: "custom"
-          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: opencode-cli
           path: packages/opencode/dist
+
+      - name: Create GitHub Release
+        shell: bash
+        run: |
+          TAG="custom-v${OPENCODE_VERSION}-$(date +%Y%m%d%H%M%S)"
+          cd packages/opencode/dist
+          tar -czf opencode-cli-windows.tar.gz *
+          gh release create "$TAG" \
+            opencode-cli-windows.tar.gz \
+            --title "Custom Build $TAG" \
+            --notes "Custom build from commit ${{ github.sha }}" \
+            --prerelease
+        env:
+          OPENCODE_VERSION: "1.2.11"
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
