@@ -97,3 +97,41 @@ jobs:
             ${{ runner.os }}-${{ matrix.settings.target }}-apt-
 
       - name: install dependencies (ubuntu only)
+        if: contains(matrix.settings.host, 'ubuntu')
+        run: |
+          mkdir -p ~/apt-cache && chmod -R a+rw ~/apt-cache
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends -o dir::cache::archives="$HOME/apt-cache" libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo chmod -R a+rw ~/apt-cache
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.settings.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/desktop/src-tauri
+          shared-key: ${{ matrix.settings.target }}
+
+      - name: Prepare
+        run: |
+          cd packages/desktop
+          bun ./scripts/prepare.ts
+        env:
+          OPENCODE_VERSION: ${{ needs.version.outputs.version || '0.0.0-custom' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUST_TARGET: ${{ matrix.settings.target }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+
+      - name: Build and upload artifacts
+        uses: tauri-apps/tauri-action@390cbe447412ced1303d35abe75287949e43437a
+        timeout-minutes: 60
+        with:
+          projectPath: packages/desktop
+          uploadWorkflowArtifacts: true # 关键点：这里会自动打包所有编译好的 exe、dmg 等文件并存档
+          tauriScript: ${{ (contains(matrix.settings.host, 'ubuntu') && 'cargo tauri') || '' }}
+          args: --target ${{ matrix.settings.target }} --config ./src-tauri/tauri.prod.conf.json --verbose
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
