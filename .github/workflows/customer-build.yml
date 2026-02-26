@@ -1,0 +1,99 @@
+name: Build Custom OpenCode
+
+on:
+  push:
+    branches:
+      - dev 
+  workflow_dispatch:
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: write # 允许上传 artifacts
+
+jobs:
+  version:
+    runs-on: ubuntu-latest # 替换为免费 Ubuntu
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-bun
+
+      - id: version
+        run: |
+          ./script/version.ts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENCODE_VERSION: "0.0.0-custom"
+          GH_REPO: ${{ github.repository }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+      tag: ${{ steps.version.outputs.tag }}
+      repo: ${{ steps.version.outputs.repo }}
+
+  build-cli:
+    needs: version
+    runs-on: ubuntu-latest # 替换为免费 Ubuntu
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-tags: true
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          cross-compile: "true"
+
+      - name: Build
+        id: build
+        run: |
+          ./packages/opencode/script/build.ts --all
+        env:
+          OPENCODE_VERSION: ${{ needs.version.outputs.version || '0.0.0-custom' }}
+          OPENCODE_RELEASE: ${{ needs.version.outputs.release || 'custom' }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencode-cli
+          path: packages/opencode/dist
+
+  build-tauri:
+    needs:
+      - build-cli
+      - version
+    continue-on-error: false
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: macos-latest
+            target: x86_64-apple-darwin
+          - host: macos-latest
+            target: aarch64-apple-darwin
+          - host: windows-latest # 替换为免费 Windows Runner
+            target: x86_64-pc-windows-msvc
+          - host: ubuntu-latest # 替换为免费 Ubuntu Runner
+            target: x86_64-unknown-linux-gnu
+          # 移除了 ARM 架构的 Ubuntu，因为个人免费账号的 ARM 节点容易报错，且你主要需要 Windows 的 exe
+    runs-on: ${{ matrix.settings.host }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-tags: true
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Cache apt packages
+        if: contains(matrix.settings.host, 'ubuntu')
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-cache
+          key: ${{ runner.os }}-${{ matrix.settings.target }}-apt-${{ hashFiles('.github/workflows/build-custom.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.settings.target }}-apt-
+
+      - name: install dependencies (ubuntu only)
