@@ -3,17 +3,19 @@ name: Build Custom OpenCode
 on:
   push:
     branches:
-      - dev 
+      - dev
   workflow_dispatch:
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
-  contents: write # 允许上传 artifacts
+  contents: write
 
 jobs:
   version:
-    runs-on: ubuntu-latest # 替换为免费 Ubuntu
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
         with:
@@ -36,7 +38,7 @@ jobs:
 
   build-cli:
     needs: version
-    runs-on: ubuntu-latest # 替换为免费 Ubuntu
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
         with:
@@ -65,7 +67,7 @@ jobs:
     needs:
       - build-cli
       - version
-    continue-on-error: false
+    runs-on: ${{ matrix.settings.host }}
     strategy:
       fail-fast: false
       matrix:
@@ -74,12 +76,10 @@ jobs:
             target: x86_64-apple-darwin
           - host: macos-latest
             target: aarch64-apple-darwin
-          - host: windows-latest # 替换为免费 Windows Runner
+          - host: windows-latest
             target: x86_64-pc-windows-msvc
-          - host: ubuntu-latest # 替换为免费 Ubuntu Runner
+          - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          # 移除了 ARM 架构的 Ubuntu，因为个人免费账号的 ARM 节点容易报错，且你主要需要 Windows 的 exe
-    runs-on: ${{ matrix.settings.host }}
     steps:
       - uses: actions/checkout@v3
         with:
@@ -92,7 +92,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/apt-cache
-          key: ${{ runner.os }}-${{ matrix.settings.target }}-apt-${{ hashFiles('.github/workflows/build-custom.yml') }}
+          key: ${{ runner.os }}-${{ matrix.settings.target }}-apt-${{ hashFiles('.github/workflows/customer-build.yml') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.settings.target }}-apt-
 
@@ -126,11 +126,11 @@ jobs:
           GITHUB_RUN_ID: ${{ github.run_id }}
 
       - name: Build and upload artifacts
-        uses: tauri-apps/tauri-action@390cbe447412ced1303d35abe75287949e43437a
+        uses: tauri-apps/tauri-action@v0
         timeout-minutes: 60
         with:
           projectPath: packages/desktop
-          uploadWorkflowArtifacts: true # 关键点：这里会自动打包所有编译好的 exe、dmg 等文件并存档
+          uploadWorkflowArtifacts: true
           tauriScript: ${{ (contains(matrix.settings.host, 'ubuntu') && 'cargo tauri') || '' }}
           args: --target ${{ matrix.settings.target }} --config ./src-tauri/tauri.prod.conf.json --verbose
         env:
