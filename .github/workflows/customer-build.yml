@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - dev
+      - fix-use-system-ca
   workflow_dispatch:
 
 concurrency:
