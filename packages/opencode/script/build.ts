@@ -58,6 +58,7 @@ console.log(`Loaded ${migrations.length} migrations`)
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
+const noCaFlag = process.argv.includes("--no-ca")
 const skipInstall = process.argv.includes("--skip-install")
 
 const allTargets: {
@@ -148,9 +149,9 @@ const targets = singleFlag
         return false
       }
 
-      // skip no-ca variants for local dev builds
+      // skip no-ca variants unless explicitly requested
       if (item.noCa) {
-        return false
+        return noCaFlag
       }
 
       return true
